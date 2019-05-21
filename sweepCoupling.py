@@ -5,7 +5,6 @@ Created on Sun May 19 10:47:03 2019
 
 @author: coreyaustin
 """
-print('test')
 #%%
 
 from gwpy.timeseries import TimeSeriesDict
@@ -16,27 +15,34 @@ from scipy import interpolate
 
 class SweepData:
     
-    def specgram(self,channel,fftl=4,ovlp=2):
-        spec = channel.spectrogram2(fftlength=fftl,overlap=ovlp)**(1/2.)
+    fftl=4
+    ovlp=2
+    
+    def specgram(self,channel):
+        spec = channel.spectrogram2(fftlength=self.fftl,overlap=self.ovlp)**(1/2.)
         spec = spec.crop_frequencies(low=20,high=120)
         norm = spec.ratio('median')
         return spec,norm
     
-    def getData(self,channels,start,stop,filename,save=False):
-        self.filename = filename
-        self.channels = channels
-        self.data   = TimeSeriesDict.fetch(channels,start,stop)
-        if save:
-            self.data.write(filename)
+    def getData(self,channels,start,stop,filename,save=False,spASD=False):
+        data   = TimeSeriesDict.fetch(channels,start,stop)
         for i in channels:
-            self.data[i].sp,self.data[i].norm = self.specgram(self.data[i])            
+            data[i].sp,data[i].norm = self.specgram(data[i])
+            if spASD:
+                data[i].sp_asd = data[i].sp.percentile(50)
+        if save:
+            np.save(filename,data)
+        return data            
         
-    def loadData(self,filename):
-        self.filename = filename
-        self.data = TimeSeriesDict.read(filename)
-        self.channels = self.data.keys()
-        for i in self.channels:
-            self.data[i].sp,self.data[i].norm = self.specgram(self.data[i])
+    def loadHDF5(self,filename):
+        data = TimeSeriesDict.read(filename)
+        channels = data.keys()
+        for i in channels:
+            data[i].sp,data[i].norm = self.specgram(data[i])
+        return data
+    
+    def loadNPY(self,filename):
+        return np.load(filename).item()
 
     def calDARM(self,darmasd,calfile='./L1darmcal_Apr17.txt'):
         caldarm = np.loadtxt(calfile)
@@ -48,14 +54,13 @@ class SweepData:
         self.quiet = TimeSeriesDict.fetch(channels,start,stop)
         for i in channels:
             self.quiet[i].sp,self.quiet[i].norm = self.specgram(self.quiet[i])
-#            self.quiet[i].sp_asd = self.quiet[i].sp.percentile(50)
-            self.quiet[i].sp_asd = self.quiet[i].asd(4,2)
+            self.quiet[i].sp_asd = self.quiet[i].sp.percentile(50)
+#            self.quiet[i].sp_asd = self.quiet[i].asd(4,2)
             self.quiet[i].sp_asd = self.quiet[i].sp_asd.crop(20,120)
 #        self.calDARM(self.quiet[channels[0]].sp_asd)
         np.save(filename,self.quiet)
         
-    def loadQuiet(self,filename):
-        self.quiet = np.load(filename).item()
+
         
     def averageASD(self,frequencies):
         for i in self.channels[1:]:
@@ -110,6 +115,8 @@ class SweepData:
                     sensor.ufactor.append(factor)
                     sensor.ufreq.append(freqs[j])
                     sensor.uest.append(est) 
+                    
+#    def coupBest():
         
 
 #%%
@@ -128,7 +135,7 @@ freqs = np.arange(31,91,0.5)
 #%%
 
 ham5sweep = SweepData()
-ham5sweep.loadData('./data/190215_31to91_ham5_x_sweep.hdf5')
+ham5sweep.dloadData('./data/190215_31to91_ham5_x_sweep.hdf5')
 ham5sweep.averageASD(freqs)
 #ham5sweep.getQuiet(channels,q_start,q_end,'fish')
 ham5sweep.loadQuiet('fish.npy')
