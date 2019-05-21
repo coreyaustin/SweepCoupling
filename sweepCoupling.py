@@ -5,7 +5,7 @@ Created on Sun May 19 10:47:03 2019
 
 @author: coreyaustin
 """
-
+print('test')
 #%%
 
 from gwpy.timeseries import TimeSeriesDict
