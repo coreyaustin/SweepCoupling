@@ -18,6 +18,9 @@ class SweepData:
     fftl=4
     ovlp=2
     
+    class temp:
+        pass
+    
     def specgram(self,channel):
         spec = channel.spectrogram2(fftlength=self.fftl,overlap=self.ovlp)**(1/2.)
         spec = spec.crop_frequencies(low=20,high=120)
@@ -25,26 +28,30 @@ class SweepData:
         return spec,norm
     
     def getData(self,channels,start,stop,filename,save=False,spASD=False):
-        data   = TimeSeriesDict.fetch(channels,start,stop)
+        data = TimeSeriesDict.fetch(channels,start,stop)
+        spec = {}
         for i in channels:
-            data[i].sp,data[i].norm = self.specgram(data[i])
+            spec[i] = self.temp()
+            spec[i].sp,spec[i].norm = self.specgram(data[i])
             if spASD:
-                data[i].sp_asd = data[i].sp.percentile(50)
+                spec[i].sp_asd = spec[i].sp.percentile(50)
         if save:
-            np.save(filename,data)
-        return data            
+            data.write('{}.hdf5'.format(filename))
+            np.save(filename,spec)
+        return spec         
         
     def loadHDF5(self,filename):
         data = TimeSeriesDict.read(filename)
-        channels = data.keys()
+        spec = {}
         for i in channels:
-            data[i].sp,data[i].norm = self.specgram(data[i])
-        return data
+            spec[i] = self.temp()
+            spec[i].sp,spec[i].norm = self.specgram(data[i])
+        return spec
     
     def loadNPY(self,filename):
         return np.load(filename).item()
 
-    def calDARM(self,darmasd,calfile='./L1darmcal_Apr17.txt'):
+    def calDARM(self,darmasd,calfile='./data/L1darmcal_Apr17.txt'):
         caldarm = np.loadtxt(calfile)
         darmcal = interpolate.interp1d(caldarm[:,0],caldarm[:,1],
                     fill_value='extrapolate')(self.quiet[channels[0]].sp_asd.frequencies)
@@ -60,10 +67,8 @@ class SweepData:
 #        self.calDARM(self.quiet[channels[0]].sp_asd)
         np.save(filename,self.quiet)
         
-
-        
     def averageASD(self,frequencies):
-        for i in self.channels[1:]:
+        for i in self.data.keys()[1:]:
             sensor = self.data[i]
             sensor.darm = []
             sensor.mfreq = []
@@ -83,7 +88,7 @@ class SweepData:
                 sensor.darm.append(avg)
             
     def coupFunc(self,freqs):
-        for i in self.channels[1:]:
+        for i in self.data.keys()[1:]:
             sensor = self.data[i]
             sensor.rfactor = []
             sensor.rfreq = []
@@ -135,10 +140,11 @@ freqs = np.arange(31,91,0.5)
 #%%
 
 ham5sweep = SweepData()
-ham5sweep.dloadData('./data/190215_31to91_ham5_x_sweep.hdf5')
+ham5sweep.data = ham5sweep.loadHDF5('./data/190215_31to91_ham5_x_sweep.hdf5')
 ham5sweep.averageASD(freqs)
-#ham5sweep.getQuiet(channels,q_start,q_end,'fish')
-ham5sweep.loadQuiet('fish.npy')
+ham5sweep.quiet = ham5sweep.getData(channels,q_start,q_end,'./data/quiet',
+                                    spASD=True,save=True)
+ham5sweep.quiet = ham5sweep.loadNPY('./data/quiet.npy')
 ham5sweep.coupFunc(freqs)
 
 #%%
