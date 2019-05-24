@@ -172,7 +172,7 @@ ham5sweep.coupFunc(freqs)
 #%%
 
 limx   = [26,95]
-limy   = [5e-25,6e-23]
+limy   = [2e-25,2e-22]
 
 for i in channels[1:]:
     f1, (ax1) = plt.subplots(1, sharex=False, figsize=[16,9])
@@ -182,10 +182,9 @@ for i in channels[1:]:
     ax1.plot(ham5sweep.quiet['L1:GDS-CALIB_STRAIN']['sp_asd']/10,'--',
              c='lightsteelblue',label='DARM/10')
     ax1.scatter(ham5sweep.data[i]['rfreq'],ham5sweep.data[i]['rest'],'salmon',label=i[14:])
-    
     ax1.set_yscale('log')
     ax1.set_xlim(limx)
-#    ax1.set_ylim(limy)
+    ax1.set_ylim(limy)
     ax1.set_xlabel('Frequency (Hz)',color='dimgray',fontsize=14)
     ax1.set_ylabel(r'Strain/$\sqrt{Hz}$',color='dimgray',fontsize=14)
     ax1.set_title('Estimated Ambient ({})'.format(i[14:]),color='dimgray',fontsize=16)
