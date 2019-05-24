@@ -18,8 +18,6 @@ class SweepData:
     fftl=4
     ovlp=2
     
-    class temp:
-        pass
     
     def specgram(self,channel):
         spec = channel.spectrogram2(fftlength=self.fftl,overlap=self.ovlp)**(1/2.)
@@ -27,25 +25,24 @@ class SweepData:
         norm = spec.ratio('median')
         return spec,norm
     
-    def getData(self,channels,start,stop,filename,save=False,spASD=False):
+    def getData(self,channels,start,stop,filename):
         data = TimeSeriesDict.fetch(channels,start,stop)
         spec = {}
         for i in channels:
-            spec[i] = self.temp()
-            spec[i].sp,spec[i].norm = self.specgram(data[i])
-            if spASD:
-                spec[i].sp_asd = spec[i].sp.percentile(50)
-        if save:
-            data.write('{}.hdf5'.format(filename))
-            np.save(filename,spec)
+            spec[i] = {}
+            spec[i]['sp'],spec[i]['norm'] = self.specgram(data[i])
+            spec[i]['sp_asd'] = spec[i]['sp'].percentile(50)
+        data.write('{}.hdf5'.format(filename),overwrite=True)
+        np.save(filename,spec)
         return spec         
         
     def loadHDF5(self,filename):
-        data = TimeSeriesDict.read(filename)
+        data = TimeSeriesDict.read('{}.hdf5'.format(filename))
         spec = {}
         for i in channels:
-            spec[i] = self.temp()
-            spec[i].sp,spec[i].norm = self.specgram(data[i])
+            spec[i] = {}
+            spec[i]['sp'],spec[i]['norm'] = self.specgram(data[i])
+        np.save(filename,spec)
         return spec
     
     def loadNPY(self,filename):
@@ -57,51 +54,42 @@ class SweepData:
                     fill_value='extrapolate')(self.quiet[channels[0]].sp_asd.frequencies)
         darmasd *= 10**(darmcal/20)/4000
         
-    def getQuiet(self,channels,start,stop,filename):
-        self.quiet = TimeSeriesDict.fetch(channels,start,stop)
-        for i in channels:
-            self.quiet[i].sp,self.quiet[i].norm = self.specgram(self.quiet[i])
-            self.quiet[i].sp_asd = self.quiet[i].sp.percentile(50)
-#            self.quiet[i].sp_asd = self.quiet[i].asd(4,2)
-            self.quiet[i].sp_asd = self.quiet[i].sp_asd.crop(20,120)
-#        self.calDARM(self.quiet[channels[0]].sp_asd)
-        np.save(filename,self.quiet)
-        
-    def averageASD(self,frequencies):
-        for i in self.data.keys()[1:]:
+    def averageASD(self,frequencies,channels):
+        self.channels = channels
+        for i in channels[1:]:
             sensor = self.data[i]
-            sensor.darm = []
-            sensor.mfreq = []
-            sensor.avg = []
-            len_time = len(sensor.norm.xindex)
+            sensor['darm'] = []
+            sensor['mfreq'] = []
+            sensor['avg'] = []
+            len_time = len(sensor['norm'].xindex)
             for j in xrange(len_time):
-                mval = np.argmax(sensor.norm[j,:])
-                mfreq = sensor.norm.yindex[:][mval].value
-                sensor.mfreq.append(mfreq)
+                mval = np.argmax(sensor['norm'][j,:])
+                mfreq = sensor['norm'].yindex[:][mval].value
+                sensor['mfreq'].append(mfreq)
             for k in xrange(len(frequencies)):
                 lowf  = frequencies[k] - 0.5
                 highf = frequencies[k] + 0.25
-                idx = np.where((sensor.mfreq>lowf)&(sensor.mfreq<highf))
-                avg = np.mean(np.array(sensor.sp[idx]),axis=0)
-                sensor.avg.append(avg)
-                avg = np.mean(np.array(self.data['L1:GDS-CALIB_STRAIN'].sp[idx]),axis=0)
-                sensor.darm.append(avg)
+                idx = np.where((sensor['mfreq']>lowf)&(sensor['mfreq']<highf))
+                avg = np.mean(np.array(sensor['sp'][idx]),axis=0)
+                sensor['avg'].append(avg)
+                avg = np.mean(np.array(self.data['L1:GDS-CALIB_STRAIN']['sp'][idx]),axis=0)
+                sensor['darm'].append(avg)
             
     def coupFunc(self,freqs):
-        for i in self.data.keys()[1:]:
+        for i in self.channels[1:]:
             sensor = self.data[i]
-            sensor.rfactor = []
-            sensor.rfreq = []
-            sensor.rest = []
-            sensor.ufactor = []
-            sensor.ufreq = []
-            sensor.uest = []
+            sensor['rfactor'] = []
+            sensor['rfreq'] = []
+            sensor['rest'] = []
+            sensor['ufactor'] = []
+            sensor['ufreq'] = []
+            sensor['uest'] = []
             for j in xrange(len(freqs)):
-                idx = np.where(sensor.sp.yindex.value==freqs[j])[0][0]
-                sens_inj = sensor.avg[j][idx-1:idx+2]
-                sens_bg  = self.quiet[i].sp_asd[idx-1:idx+2].value
-                darm_inj = sensor.darm[j][idx-1:idx+2]
-                darm_bg  = self.quiet['L1:GDS-CALIB_STRAIN'].sp_asd[idx-1:idx+2].value
+                idx = np.where(sensor['sp'].yindex.value==freqs[j])[0][0]
+                sens_inj = sensor['avg'][j][idx-1:idx+2]
+                sens_bg  = self.quiet[i]['sp_asd'][idx-1:idx+2].value
+                darm_inj = sensor['darm'][j][idx-1:idx+2]
+                darm_bg  = self.quiet['L1:GDS-CALIB_STRAIN']['sp_asd'][idx-1:idx+2].value
                 sens_rat = sens_inj[1]/sens_bg[1]
                 darm_rat = darm_inj[1]/darm_bg[1]
                 if sens_rat >= 5 and darm_rat >= 2:
@@ -109,17 +97,17 @@ class SweepData:
                     sens = sum(sens_inj**2)-sum(sens_bg**2)
                     factor = np.sqrt(darm/sens)
                     est    = factor * sens_bg[1]
-                    sensor.rfactor.append(factor)
-                    sensor.rfreq.append(freqs[j])
-                    sensor.rest.append(est)
+                    sensor['rfactor'].append(factor)
+                    sensor['rfreq'].append(freqs[j])
+                    sensor['rest'].append(est)
                 elif sens_rat >=5 and darm_rat < 2:      
                     darm = sum(darm_bg**2)
                     sens = sum(sens_inj**2) - sum(sens_bg**2)
                     factor = np.sqrt(darm/sens)
                     est    = factor * sens_bg[1]
-                    sensor.ufactor.append(factor)
-                    sensor.ufreq.append(freqs[j])
-                    sensor.uest.append(est) 
+                    sensor['ufactor'].append(factor)
+                    sensor['ufreq'].append(freqs[j])
+                    sensor['uest'].append(est) 
                     
 #    def coupBest():
         
@@ -140,11 +128,14 @@ freqs = np.arange(31,91,0.5)
 #%%
 
 ham5sweep = SweepData()
-ham5sweep.data = ham5sweep.loadHDF5('./data/190215_31to91_ham5_x_sweep.hdf5')
-ham5sweep.averageASD(freqs)
-ham5sweep.quiet = ham5sweep.getData(channels,q_start,q_end,'./data/quiet',
-                                    spASD=True,save=True)
+
+#ham5sweep.data = ham5sweep.loadHDF5('./data/190215_31to91_ham5_x_sweep')
+ham5sweep.data = ham5sweep.loadNPY('./data/190215_31to91_ham5_x_sweep.npy')
+
+#ham5sweep.quiet = ham5sweep.getData(channels,q_start,q_end,'./data/quiet')
 ham5sweep.quiet = ham5sweep.loadNPY('./data/quiet.npy')
+
+ham5sweep.averageASD(freqs,channels)
 ham5sweep.coupFunc(freqs)
 
 #%%
@@ -155,18 +146,18 @@ limy   = [5e-25,6e-23]
 for i in channels[1:]:
     f1, (ax1) = plt.subplots(1, sharex=False, figsize=[16,9])
     
-    ax1.plot(ham5sweep.quiet['L1:GDS-CALIB_STRAIN'].sp_asd,'steelblue',
+    ax1.plot(ham5sweep.quiet['L1:GDS-CALIB_STRAIN']['sp_asd'],'steelblue',
              linewidth=2,label='DARM (quiet reference)')
-    ax1.plot(ham5sweep.quiet['L1:GDS-CALIB_STRAIN'].sp_asd/10,'--',
+    ax1.plot(ham5sweep.quiet['L1:GDS-CALIB_STRAIN']['sp_asd']/10,'--',
              c='lightsteelblue',label='DARM/10')
-    ax1.scatter(ham5sweep.data[i].rfreq,ham5sweep.data[i].rest,'salmon',label=i)
+    ax1.scatter(ham5sweep.data[i]['rfreq'],ham5sweep.data[i]['rest'],'salmon',label=i[14:])
     
     ax1.set_yscale('log')
     ax1.set_xlim(limx)
 #    ax1.set_ylim(limy)
     ax1.set_xlabel('Frequency (Hz)',color='dimgray',fontsize=14)
     ax1.set_ylabel(r'Strain/$\sqrt{Hz}$',color='dimgray',fontsize=14)
-    ax1.set_title('Estimated Ambient ({})'.format(i),color='dimgray',fontsize=16)
+    ax1.set_title('Estimated Ambient ({})'.format(i[14:]),color='dimgray',fontsize=16)
     ax1.legend()
     ax1.grid(which='both',axis='both',color='darkgrey',linestyle='dotted')  
     ax1.tick_params(axis='both', colors='dimgrey', labelsize=14) 
