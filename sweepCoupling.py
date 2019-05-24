@@ -10,54 +10,74 @@ different) location.
 @author: coreyaustin
 """
 #%%
-
-
 from gwpy.timeseries import TimeSeriesDict
 from matplotlib import pyplot as plt
 import numpy as np
 from scipy import interpolate
 
+################################################################################
+## Some helper functions for fetching and preparing data for use in the coupling
+## functions calculations. Saves time series data in an .hdf5 file and saves
+## spectrograms and spectra in a .npy file
+################################################################################
+
+# return a spectrogram and a normalized spectrogram 
+# both are cropped in frequency to speed things up
+def specgram(channel,fftl=4,ovlp=2):
+    spec = channel.spectrogram2(fftlength=fftl,overlap=ovlp)**(1/2.)
+    spec = spec.crop_frequencies(low=20,high=120)
+    norm = spec.ratio('median')
+    return spec,norm
+
+#fetch data for given channels at a given time and save the data, then 
+#calculate spectrogram and normalized spectrogram and save in a separate file
+#return both spectrograms
+def getData(channels,start,stop,filename):
+    data = TimeSeriesDict.fetch(channels,start,stop)
+    spec = {}
+    for i in channels:
+        spec[i] = {}
+        spec[i]['sp'],spec[i]['norm'] = specgram(data[i])
+        spec[i]['sp_asd'] = spec[i]['sp'].percentile(50)
+    data.write('{}.hdf5'.format(filename),overwrite=True)
+    np.save(filename,spec)
+    return spec 
+
+#load time series data stored in an .hdf5 file and return the spectrogram and
+#normalized spectrogram
+def loadHDF5(filename):
+    data = TimeSeriesDict.read('{}.hdf5'.format(filename))
+    spec = {}
+    for i in channels:
+        spec[i] = {}
+        spec[i]['sp'],spec[i]['norm'] = specgram(data[i])
+    np.save(filename,spec)
+    return spec
+
+#return contents of a numpy file (they contain spectrograms in this code, but 
+#this should work for any numpy file)
+def loadNPY(filename):
+    return np.load(filename).item()
+
+#return calibrated DARM in strain from a given DARM spectrum
+def calDARM(self,darmasd,calfile='./data/L1darmcal_Apr17.txt'):
+    caldarm = np.loadtxt(calfile)
+    darmcal = interpolate.interp1d(caldarm[:,0],caldarm[:,1],
+                fill_value='extrapolate')(darmasd.frequencies)
+    darmasd *= 10**(darmcal/20)/4000
+    return darmasd
+
+###############################################################################
+# Class for calculating coupling functions and finding the best sensor at each
+# frequency.
+###############################################################################
+    
 class SweepData:
     
-    fftl=4
-    ovlp=2
-    
-    
-    def specgram(self,channel):
-        spec = channel.spectrogram2(fftlength=self.fftl,overlap=self.ovlp)**(1/2.)
-        spec = spec.crop_frequencies(low=20,high=120)
-        norm = spec.ratio('median')
-        return spec,norm
-    
-    def getData(self,channels,start,stop,filename):
-        data = TimeSeriesDict.fetch(channels,start,stop)
-        spec = {}
-        for i in channels:
-            spec[i] = {}
-            spec[i]['sp'],spec[i]['norm'] = self.specgram(data[i])
-            spec[i]['sp_asd'] = spec[i]['sp'].percentile(50)
-        data.write('{}.hdf5'.format(filename),overwrite=True)
-        np.save(filename,spec)
-        return spec         
-        
-    def loadHDF5(self,filename):
-        data = TimeSeriesDict.read('{}.hdf5'.format(filename))
-        spec = {}
-        for i in channels:
-            spec[i] = {}
-            spec[i]['sp'],spec[i]['norm'] = self.specgram(data[i])
-        np.save(filename,spec)
-        return spec
-    
-    def loadNPY(self,filename):
-        return np.load(filename).item()
-
-    def calDARM(self,darmasd,calfile='./data/L1darmcal_Apr17.txt'):
-        caldarm = np.loadtxt(calfile)
-        darmcal = interpolate.interp1d(caldarm[:,0],caldarm[:,1],
-                    fill_value='extrapolate')(self.quiet[channels[0]].sp_asd.frequencies)
-        darmasd *= 10**(darmcal/20)/4000
-        
+    #Finds the frequency of the sweep at a given time by finding the highest
+    #value (the brightest part of the spectrogram at a given time) in the
+    #accelerometer at each time. Then averages together times where the 
+    #sweep was passing through the same frequency.
     def averageASD(self,frequencies,channels):
         self.channels = channels
         for i in channels[1:]:
@@ -79,6 +99,8 @@ class SweepData:
                 avg = np.mean(np.array(self.data['L1:GDS-CALIB_STRAIN']['sp'][idx]),axis=0)
                 sensor['darm'].append(avg)
             
+    #Calculate 'real' and upper limit coupling function and estimated ambient
+    #for each accelerometer.
     def coupFunc(self,freqs):
         for i in self.channels[1:]:
             sensor = self.data[i]
@@ -138,11 +160,11 @@ freqs = np.arange(31,91,0.5)
 
 ham5sweep = SweepData()
 
-#ham5sweep.data = ham5sweep.loadHDF5('./data/190215_31to91_ham5_x_sweep')
-ham5sweep.data = ham5sweep.loadNPY('./data/190215_31to91_ham5_x_sweep.npy')
+#ham5sweep.data = loadHDF5('./data/190215_31to91_ham5_x_sweep')
+ham5sweep.data = loadNPY('./data/190215_31to91_ham5_x_sweep.npy')
 
-#ham5sweep.quiet = ham5sweep.getData(channels,q_start,q_end,'./data/quiet')
-ham5sweep.quiet = ham5sweep.loadNPY('./data/quiet.npy')
+#ham5sweep.quiet = getData(channels,q_start,q_end,'./data/quiet')
+ham5sweep.quiet = loadNPY('./data/quiet.npy')
 
 ham5sweep.averageASD(freqs,channels)
 ham5sweep.coupFunc(freqs)
