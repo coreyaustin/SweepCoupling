@@ -3,12 +3,16 @@
 """
 Created on Sun May 19 10:47:03 2019
 
+Code to calculate coupling functions from sweep data. Also find the best 
+witness sensor using a broadband (or other) injection in a nearby (but 
+different) location.
+
 @author: coreyaustin
 """
 #%%
 
+
 from gwpy.timeseries import TimeSeriesDict
-from gwpy.frequencyseries import FrequencySeries
 from matplotlib import pyplot as plt
 import numpy as np
 from scipy import interpolate
@@ -120,8 +124,13 @@ class SweepData:
 channels  = ['L1:GDS-CALIB_STRAIN','L1:PEM-CS_ACC_HAM5_SRM_Z_DQ','L1:PEM-CS_ACC_HAM6VAC_SEPTUM_X_DQ',
              'L1:PEM-CS_ACC_HAM6VAC_SEPTUM_Y_DQ']
 
+#Start and end time for quiet references
 q_start = 'Feb 15 2019 02:26:15 UTC'
 q_end   = 'Feb 15 2019 02:27:15 UTC'
+
+#Start and end time for broadband injection
+i_start = 'Jan 14 2019 02:44:26 UTC'
+i_end   = 'Jan 14 2019 02:45:26 UTC'
 
 freqs = np.arange(31,91,0.5)
 
@@ -163,8 +172,6 @@ for i in channels[1:]:
     ax1.tick_params(axis='both', colors='dimgrey', labelsize=14) 
     
 #    plt.savefig('./plots/{}_coupling.png'.format(i))
-
-
 
 
 
