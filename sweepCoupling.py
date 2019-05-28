@@ -15,6 +15,11 @@ from matplotlib import pyplot as plt
 import numpy as np
 from scipy import interpolate
 
+# Update the matplotlib configuration parameters:
+plt.rcParams.update({'text.usetex': False})
+
+#%%
+
 ################################################################################
 ## Some helper functions for fetching and preparing data for use in the coupling
 ## functions calculations. Saves time series data in an .hdf5 file and saves
@@ -51,6 +56,7 @@ def loadHDF5(filename):
     for i in channels:
         spec[i] = {}
         spec[i]['sp'],spec[i]['norm'] = specgram(data[i])
+        spec[i]['sp_asd'] = spec[i]['sp'].percentile(50)
     np.save(filename,spec)
     return spec
 
@@ -135,11 +141,42 @@ class SweepData:
                     sensor['ufreq'].append(freqs[j])
                     sensor['uest'].append(est) 
                     
-#    def coupBest():
+    def coupBest(self):
+        for i in self.channels[1:]:
+            sensor = self.data[i]
+            sensor['diff'] = []
+            sensor['bbest'] = []
+            for j in xrange(len(sensor['rfreq'])):
+                sens_bband = self.bband[i]['sp_asd']
+                darm_bband = self.bband[channels[0]]['sp_asd']
+                bb_sens_idx = np.where(sens_bband.frequencies.value==sensor['rfreq'][j])
+                bb_darm_idx = np.where(darm_bband.frequencies.value==sensor['rfreq'][j])
+                sensor['diff'].append(((darm_bband[bb_darm_idx]-sensor['rfactor'][j]*
+                                        sens_bband[bb_sens_idx])**2)**(1/2.))
+        self.best = {}
+        self.best['frequencies'] = np.unique(np.concatenate([ham5sweep.data[k]['rfreq'] for k in channels[1:]]))
+        self.best['sensor'] = []
+        self.best['factor'] = []
+        self.best['estimate'] = []
+        for i in xrange(len(self.best['frequencies'])):
+            diff = []
+            sens = []
+            fact = []
+            est  = []
+            for j in self.channels[1:]:
+                sensor = self.data[j]
+                idx = np.where(sensor['rfreq']==self.best['frequencies'][i])[0]
+                if idx.size:
+                    diff.append(sensor['diff'][idx[0]])
+                    sens.append(j)
+                    fact.append(sensor['rfactor'][idx[0]])
+                    est.append(sensor['rest'][idx[0]])
+            self.best['sensor'].append(sens[diff.index(min(diff))])
+            self.best['factor'].append(fact[diff.index(min(diff))])
+            self.best['estimate'].append(est[diff.index(min(diff))])
+        self.best['estimate'] = np.array(self.best['estimate'])
         
-
 #%%
-
 #channels  = ['L1:CAL-DELTAL_EXTERNAL_DQ','L1:PEM-CS_ACC_HAM5_SRM_Z_DQ','L1:PEM-CS_ACC_HAM6VAC_SEPTUM_X_DQ',
 #             'L1:PEM-CS_ACC_HAM6VAC_SEPTUM_Y_DQ']
             
@@ -155,9 +192,7 @@ i_start = 'Jan 14 2019 02:44:26 UTC'
 i_end   = 'Jan 14 2019 02:45:26 UTC'
 
 freqs = np.arange(31,91,0.5)
-
 #%%
-
 ham5sweep = SweepData()
 
 #ham5sweep.data = loadHDF5('./data/190215_31to91_ham5_x_sweep')
@@ -166,17 +201,50 @@ ham5sweep.data = loadNPY('./data/190215_31to91_ham5_x_sweep.npy')
 #ham5sweep.quiet = getData(channels,q_start,q_end,'./data/quiet')
 ham5sweep.quiet = loadNPY('./data/quiet.npy')
 
+#ham5sweep.bband = getData(channesl,i_start,i_end,'./data/bband')
+ham5sweep.bband = loadNPY('./data/bband.npy')
+
 ham5sweep.averageASD(freqs,channels)
 ham5sweep.coupFunc(freqs)
+ham5sweep.coupBest()
 
 #%%
+plt.style.use('seaborn-whitegrid')
+
+limx   = [26,95]
+limy   = [2e-25,2e-22]
+
+srm_idx = np.where(np.array(ham5sweep.best['sensor'])==channels[1])[0]
+spx_idx = np.where(np.array(ham5sweep.best['sensor'])==channels[2])[0]
+spy_idx = np.where(np.array(ham5sweep.best['sensor'])==channels[3])[0]
+
+f1, (ax1) = plt.subplots(1, sharex=False, figsize=[16,9])
+
+ax1.plot(ham5sweep.quiet['L1:GDS-CALIB_STRAIN']['sp_asd'],'steelblue',
+         linewidth=2,label='DARM (quiet reference)')
+ax1.plot(ham5sweep.quiet['L1:GDS-CALIB_STRAIN']['sp_asd']/10,'--',
+         c='lightsteelblue',label='DARM/10')
+ax1.scatter(ham5sweep.best['frequencies'][srm_idx],ham5sweep.best['estimate'][srm_idx],'salmon',label='SRM Z')
+ax1.scatter(ham5sweep.best['frequencies'][spx_idx],ham5sweep.best['estimate'][spx_idx],'darkseagreen',label='SEP X')
+ax1.scatter(ham5sweep.best['frequencies'][spy_idx],ham5sweep.best['estimate'][spy_idx],'darkmagenta',label='SEP Y')
+ax1.set_yscale('log')
+ax1.set_xlim(limx)
+ax1.set_ylim(limy)
+ax1.set_xlabel('Frequency (Hz)',color='dimgray',fontsize=14)
+ax1.set_ylabel(r'Strain/$\sqrt{Hz}$',color='dimgray',fontsize=14)
+ax1.set_title('Estimated Ambient',color='dimgray',fontsize=16)
+ax1.legend()
+ax1.grid(which='both',axis='both',color='darkgrey',linestyle='dotted')  
+ax1.tick_params(axis='both', colors='dimgrey', labelsize=14) 
+
+#%%
+plt.style.use('seaborn-whitegrid')
 
 limx   = [26,95]
 limy   = [2e-25,2e-22]
 
 for i in channels[1:]:
     f1, (ax1) = plt.subplots(1, sharex=False, figsize=[16,9])
-    
     ax1.plot(ham5sweep.quiet['L1:GDS-CALIB_STRAIN']['sp_asd'],'steelblue',
              linewidth=2,label='DARM (quiet reference)')
     ax1.plot(ham5sweep.quiet['L1:GDS-CALIB_STRAIN']['sp_asd']/10,'--',
@@ -191,9 +259,5 @@ for i in channels[1:]:
     ax1.legend()
     ax1.grid(which='both',axis='both',color='darkgrey',linestyle='dotted')  
     ax1.tick_params(axis='both', colors='dimgrey', labelsize=14) 
-    
-#    plt.savefig('./plots/{}_coupling.png'.format(i))
-
-
 
 
