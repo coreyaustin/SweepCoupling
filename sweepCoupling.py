@@ -125,22 +125,26 @@ class SweepData:
                 sens_rat = sens_inj[1]/sens_bg[1]
                 darm_rat = darm_inj[1]/darm_bg[1]
                 if sens_rat >= 5 and darm_rat >= 2:
-                    darm = sum(darm_inj**2)-sum(darm_bg**2)
-                    sens = sum(sens_inj**2)-sum(sens_bg**2)
+                    darm = np.sum(darm_inj**2)-np.sum(darm_bg**2)
+                    sens = np.sum(sens_inj**2)-np.sum(sens_bg**2)
                     factor = np.sqrt(darm/sens)
                     est    = factor * sens_bg[1]
                     sensor['rfactor'].append(factor)
                     sensor['rfreq'].append(freqs[j])
                     sensor['rest'].append(est)
                 elif sens_rat >=5 and darm_rat < 2:      
-                    darm = sum(darm_bg**2)
-                    sens = sum(sens_inj**2) - sum(sens_bg**2)
+                    darm = np.sum(darm_bg**2)
+                    sens = np.sum(sens_inj**2) - np.sum(sens_bg**2)
                     factor = np.sqrt(darm/sens)
                     est    = factor * sens_bg[1]
                     sensor['ufactor'].append(factor)
                     sensor['ufreq'].append(freqs[j])
                     sensor['uest'].append(est) 
                     
+    #find the best coupling function at each frequency by multiplying the coupling
+    #function for each acclerometer by that accelerometer during a broadband 
+    #injection in a nearby but different location and comparing the result to 
+    #DARM during the injection               
     def coupBest(self):
         for i in self.channels[1:]:
             sensor = self.data[i]
