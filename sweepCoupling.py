@@ -50,6 +50,7 @@ def getData(channels,start,stop,filename):
 def loadHDF5(filename):
     data = TimeSeriesDict.read('{}.hdf5'.format(filename))
     spec = {}
+    channels = data.keys()
     for i in channels:
         spec[i] = {}
         spec[i]['sp'],spec[i]['norm'] = specgram(data[i])
