@@ -64,12 +64,17 @@ def loadNPY(filename):
     return np.load(filename).item()
 
 #return calibrated DARM in strain from a given DARM spectrum
-def calDARM(self,darmasd,calfile='./data/L1darmcal_Apr17.txt'):
+def calDARM(darmasd,calfile='./data/L1darmcal_Apr17.txt'):
     caldarm = np.loadtxt(calfile)
     darmcal = interpolate.interp1d(caldarm[:,0],caldarm[:,1],
                 fill_value='extrapolate')(darmasd.frequencies)
     darmasd *= 10**(darmcal/20)/4000
     return darmasd
+
+def stitch(spectraLow,spectraHigh,crossover):
+    idx = np.where(spectraLow.frequencies.value==crossover)[0][0]
+    composite = spectraLow[0:idx].append(spectraHigh[idx:],inplace=False)
+    return composite
 
 ###############################################################################
 # Class for calculating coupling functions and finding the best sensor at each
